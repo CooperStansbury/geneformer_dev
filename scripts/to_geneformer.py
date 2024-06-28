@@ -9,7 +9,7 @@ import scanpy as sc
 import anndata as an
 from datasets import Dataset
 
-DEFAULT_NAME_PATH = "/nfs/turbo/umms-indikar/shared/projects/geneformer/gene_names.pkl"
+DEFAULT_NAME_PATH = "/nfs/turbo/umms-indikar/shared/projects/geneformer/geneformer/gene_name_id_dict.pkl"
 DEFAULT_TOKEN_PATH = "/nfs/turbo/umms-indikar/shared/projects/geneformer/token_dictionary.pkl"
 DEFAULT_MEDIAN_PATH = "/nfs/turbo/umms-indikar/shared/projects/geneformer/geneformer/gene_median_dictionary.pkl"
 MODEL_INPUT_SIZE = 2048
@@ -314,8 +314,6 @@ if __name__ == "__main__":
     gene_names = args.gene_names
     gene_name_column = args.gene_name_column
     map_names = args.map_gene_names
-    
-    print(args)
 
     # load the resources
     gene_token_dict, gene_keys, genelist_dict = load_gene_tokenization(token_path)
