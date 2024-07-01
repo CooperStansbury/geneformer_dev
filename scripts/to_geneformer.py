@@ -209,6 +209,21 @@ def tokenize_anndata(adata, genelist_dict, gene_median_dict,
     return tokenized_cells, file_cell_metadata
 
 
+def format_cell_features(example):
+    """
+    Truncates gene tokens (`input_ids`) to `model_size` and adds a `length` feature.
+
+    Args:
+        example (dict): Cell data with `input_ids` (list of gene tokens).
+
+    Returns:
+        dict: Modified cell data with truncated `input_ids` and added `length`.
+    """
+    example["input_ids"] = example["input_ids"][0:model_size] 
+    example["length"] = len(example["input_ids"]) 
+    return example
+
+
 def save_hf_dataset(dataset: Dataset, output_path: str, overwrite=True):
     """
     Saves a Hugging Face Dataset to disk at a specified file path.
@@ -237,66 +252,71 @@ def save_hf_dataset(dataset: Dataset, output_path: str, overwrite=True):
 
         
 if __name__ == "__main__":
-    # Argument Parsing
-    parser = argparse.ArgumentParser(description="Data processing script.")
-    
-    parser.add_argument("-i", "--input_path", help="Path to the input file.")
-    
-    parser.add_argument("-o", "--output_path", help="Path to save the output file.")
-    
-    parser.add_argument("-t", "--token_path", nargs='?', 
+     # Argument Parsing
+    parser = argparse.ArgumentParser(description="Process single-cell RNA-seq data into a Hugging Face dataset format for gene expression modeling.")
+
+    parser.add_argument("-i", "--input_path", required=True,
+                        help="Path to the input h5ad file containing single-cell RNA-seq data.")
+
+    parser.add_argument("-o", "--output_path", required=True,
+                        help="Path to save the processed Hugging Face dataset.")
+
+    parser.add_argument("-t", "--token_path", nargs='?',
                         const=DEFAULT_TOKEN_PATH, type=str,
                         default=DEFAULT_TOKEN_PATH,
-                        help="Path to the token file (optional).")
-    
+                        help="Path to the file containing the gene token dictionary (optional, defaults to %(default)s).")
+
     parser.add_argument("-m", "--median_path", nargs='?',
                         const=DEFAULT_MEDIAN_PATH, type=str,
                         default=DEFAULT_MEDIAN_PATH,
-                        help="Path to the median file (optional).")
-    
+                        help="Path to the file containing the gene median expression dictionary (optional, defaults to %(default)s).")
+
     parser.add_argument("--n_proc", nargs='?',
-                        const=16, type=int,
-                        default=16,
-                        help="Number of processes to use when tokenizing.")
-    
+                        const=NUMBER_PROC, type=int,
+                        default=NUMBER_PROC,
+                        help="Number of processes to use for parallel processing (optional, defaults to %(default)s).")
+
     parser.add_argument("--model_size", nargs='?',
-                        const=2048, type=int,
-                        default=2048,
-                        help="Number of genes top-ranked to use before truncating.")
-    
+                        const=MODEL_INPUT_SIZE, type=int,
+                        default=MODEL_INPUT_SIZE,
+                        help="Maximum number of top-ranked genes to include per cell (optional, defaults to %(default)s).")
+
     parser.add_argument("--target_sum", nargs='?',
                         const=10000, type=float,
                         default=10000,
-                        help="The normalization target sum.")
-    
+                        help="Target sum for cell count normalization (optional, defaults to %(default)s).")
+
     parser.add_argument("--gene_id", nargs='?',
                         const='ensembl_id', type=str,
                         default='ensembl_id',
-                        help="The column name of ensemble identifiers.")
-    
+                        help="Column name in AnnData.var containing gene IDs (optional, defaults to %(default)s).")
+
     parser.add_argument("--counts_column", nargs='?',
                         const='n_counts', type=str,
                         default='n_counts',
-                        help="The column name of total counts per cell.")
-    
+                        help="Column name in AnnData.obs containing total counts per cell (optional, defaults to %(default)s).")
+  
     parser.add_argument("--layer", nargs='?',
                         const='X', type=str,
                         default='X',
-                        help="The layer of the adata object to use.")
-    
+                        help="Layer of the AnnData object to use for expression data (optional, defaults to %(default)s).")
+
     parser.add_argument("--gene_names", nargs='?',
-                    const=DEFAULT_NAME_PATH, type=str,
-                    default=DEFAULT_NAME_PATH,
-                    help="The path to the gene names to id mapping.")
-    
-        
+                        const=DEFAULT_NAME_PATH, type=str,
+                        default=DEFAULT_NAME_PATH,
+                        help="Path to the file mapping gene names to IDs (optional, defaults to %(default)s).")
+  
     parser.add_argument("--gene_name_column", nargs='?',
                         const='gene_name', type=str,
                         default='gene_name',
-                        help="Column in adata.var with gene names to be mapped")
-    
+                        help="Column name in AnnData.var with gene names to be mapped (optional, defaults to %(default)s).")
+
     parser.add_argument('--map_gene_names', action='store_true',
-                       help="Boolean flag controlling gene name --> ensemble id mapping.")
+                        help="Enable mapping of gene names to Ensembl IDs (optional).")
+    
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Increase output verbosity"
+    )
     
     # parse args
     args = parser.parse_args()
@@ -314,55 +334,116 @@ if __name__ == "__main__":
     gene_names = args.gene_names
     gene_name_column = args.gene_name_column
     map_names = args.map_gene_names
-
-    # load the resources
-    gene_token_dict, gene_keys, genelist_dict = load_gene_tokenization(token_path)
-    gene_median_dict = load_gene_median_dict(median_path)
-    gene_names = load_gene_names(gene_names)
-
-    # load the data
-    adata = sc.read_h5ad(input_path)
-     
-    # check gene names
-    if map_names:
-        adata = map_gene_names(adata, 
-                               gene_id, 
-                               gene_name_column, 
-                               gene_names)
-        
-    # check the layer
-    if not layer == 'X':
-        adata.X = adata.layers[layer]
-        
-    # check the counts column
-    adata = check_counts_column(adata, counts_column)
-        
-    # tokenize raw counts
-    tokenized_cells, cell_metadata = tokenize_anndata(adata, 
-                                                      genelist_dict, 
-                                                      gene_median_dict,
-                                                      target_sum=target_sum,
-                                                      gene_id=gene_id,
-                                                      counts_column=counts_column,
-                                                     )
     
-    # Merge cell metadata into the dataset dictionary
+    # Verbose Output Handling
+    if args.verbose:
+        def vprint(*args, **kwargs):  # Define a verbose print function
+            print(*args, file=sys.stderr, **kwargs)  # Print to stderr to distinguish from normal output
+    else:
+        def vprint(*args, **kwargs):
+            pass  # Do nothing if verbose mode is off
+    
+    # Load resources with informative prints
+    vprint("Loading gene tokenization data...")
+    gene_token_dict, gene_keys, genelist_dict = load_gene_tokenization(token_path)
+    vprint(f"Loaded {len(gene_token_dict)} gene tokens")
+
+    vprint("Loading gene median expression data...")
+    gene_median_dict = load_gene_median_dict(median_path)
+    vprint(f"Loaded {len(gene_median_dict)} gene median expression values")
+
+    if map_names:
+        vprint("Loading gene name mapping data...")
+        gene_names = load_gene_names(gene_names)
+        vprint(f"Loaded {len(gene_names)} gene name mappings")
+
+    # Load and pre-process data
+    vprint(f"Loading AnnData from {input_path}...")
+    adata = sc.read_h5ad(input_path)
+    vprint(f"Loaded AnnData with shape {adata.shape}")
+
+    if map_names:
+        vprint("Mapping gene names to Ensembl IDs...")
+        adata = map_gene_names(adata, gene_id, gene_name_column, gene_names)
+
+    if not layer == 'X':
+        vprint(f"Using layer '{layer}' for expression data...")
+        adata.X = adata.layers[layer]
+
+    vprint("Checking for and/or calculating total counts per cell...")
+    adata = check_counts_column(adata, counts_column)
+
+    # Tokenize and rank genes
+    vprint("Tokenizing and ranking genes...")
+    tokenized_cells, cell_metadata = tokenize_anndata(
+        adata, genelist_dict, gene_median_dict,
+        target_sum=target_sum, gene_id=gene_id, counts_column=counts_column
+    )
+    vprint(f"Processed {len(tokenized_cells)} cells")
+
+    # Create Hugging Face dataset
+    vprint("Creating Hugging Face dataset...")
     dataset_dict = {
         "input_ids": tokenized_cells,
-        **cell_metadata 
+        **cell_metadata
     }
-    
     output_dataset = Dataset.from_dict(dataset_dict)
+    vprint(f"Dataset has {len(output_dataset)} examples")
 
-    def format_cell_features(example):
-        example["input_ids"] = example["input_ids"][0 : model_size] # truncate
-        example["length"] = len(example["input_ids"])  # Add length for convenience
-        return example
+    # Format cell features
+    vprint("Formatting cell features...")
+    dataset = output_dataset.map(format_cell_features, num_proc=n_proc)
 
-    dataset = output_dataset.map(format_cell_features, num_proc=n_proc) 
-    
-    # store output
+    # Save dataset
+    vprint(f"Saving processed dataset to {output_path}...")
     save_hf_dataset(dataset, output_path, overwrite=True)
+    vprint("Processing completed successfully!")
+
+#     # load the resources
+#     gene_token_dict, gene_keys, genelist_dict = load_gene_tokenization(token_path)
+#     gene_median_dict = load_gene_median_dict(median_path)
+#     gene_names = load_gene_names(gene_names)
+
+#     # load the data
+#     adata = sc.read_h5ad(input_path)
+     
+#     # check gene names
+#     if map_names:
+#         adata = map_gene_names(adata, 
+#                                gene_id, 
+#                                gene_name_column, 
+#                                gene_names)
+        
+#     # check the layer
+#     if not layer == 'X':
+#         adata.X = adata.layers[layer]
+        
+#     # check the counts column
+#     adata = check_counts_column(adata, counts_column)
+        
+#     # tokenize raw counts
+#     tokenized_cells, cell_metadata = tokenize_anndata(adata, 
+#                                                       genelist_dict, 
+#                                                       gene_median_dict,
+#                                                       target_sum=target_sum,
+#                                                       gene_id=gene_id,
+#                                                       counts_column=counts_column,
+#                                                      )
+    
+#     # Merge cell metadata into the dataset dictionary
+#     dataset_dict = {
+#         "input_ids": tokenized_cells,
+#         **cell_metadata 
+#     }
+    
+#     output_dataset = Dataset.from_dict(dataset_dict)
+
+
+
+#     dataset = output_dataset.map(format_cell_features, num_proc=n_proc) 
+    
+#     # store output
+#     save_hf_dataset(dataset, output_path, overwrite=True)
 
     
     
