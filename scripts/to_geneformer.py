@@ -257,27 +257,27 @@ if __name__ == "__main__":
     parser.add_argument("--n_proc", nargs='?',
                         const=16, type=int,
                         default=16,
-                        help="Number of processes to use when tokenizing")
+                        help="Number of processes to use when tokenizing.")
     
     parser.add_argument("--model_size", nargs='?',
                         const=2048, type=int,
                         default=2048,
-                        help="Number of genes top-ranked to use before truncating")
+                        help="Number of genes top-ranked to use before truncating.")
     
     parser.add_argument("--target_sum", nargs='?',
                         const=10000, type=float,
                         default=10000,
-                        help="Number of genes top-ranked to use before truncating")
+                        help="The normalization target sum.")
     
     parser.add_argument("--gene_id", nargs='?',
                         const='ensembl_id', type=str,
                         default='ensembl_id',
-                        help="The column name of ensemble identifiers")
+                        help="The column name of ensemble identifiers.")
     
     parser.add_argument("--counts_column", nargs='?',
                         const='n_counts', type=str,
                         default='n_counts',
-                        help="The column name of ensemble identifiers")
+                        help="The column name of total counts per cell.")
     
     parser.add_argument("--layer", nargs='?',
                         const='X', type=str,
@@ -287,7 +287,7 @@ if __name__ == "__main__":
     parser.add_argument("--gene_names", nargs='?',
                     const=DEFAULT_NAME_PATH, type=str,
                     default=DEFAULT_NAME_PATH,
-                    help="Path to the gene name mapping")
+                    help="The path to the gene names to id mapping.")
     
         
     parser.add_argument("--gene_name_column", nargs='?',
@@ -332,7 +332,7 @@ if __name__ == "__main__":
         
     # check the layer
     if not layer == 'X':
-        adata.X = adata.layer[layer]
+        adata.X = adata.layers[layer]
         
     # check the counts column
     adata = check_counts_column(adata, counts_column)
