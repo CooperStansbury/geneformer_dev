@@ -290,6 +290,9 @@ if __name__ == "__main__":
                         const='ensembl_id', type=str,
                         default='ensembl_id',
                         help="Column name in AnnData.var containing gene IDs (optional, defaults to %(default)s).")
+    
+    parser.add_argument('--aggregate_transcripts', action='store_true',
+                        help="Split gene IDs on '.' characters and sum counts for each gene ID (optional).")
 
     parser.add_argument("--counts_column", nargs='?',
                         const='n_counts', type=str,
@@ -329,6 +332,7 @@ if __name__ == "__main__":
     model_size = args.model_size
     target_sum = args.target_sum
     gene_id = args.gene_id
+    aggregate_transcripts = args.aggregate_transcripts
     counts_column = args.counts_column
     layer = args.layer
     gene_names = args.gene_names
@@ -369,7 +373,7 @@ if __name__ == "__main__":
     if not layer == 'X':
         vprint(f"Using layer '{layer}' for expression data...")
         adata.X = adata.layers[layer]
-
+        
     vprint("Checking for and/or calculating total counts per cell...")
     adata = check_counts_column(adata, counts_column)
 
