@@ -52,8 +52,11 @@ def extract_embedding_in_mem(model, data, emb_mode='cell', layer_to_quant=-1, fo
         summary_stat=None,  
         silent=False, 
     )
-    embs_df = pd.DataFrame(embs.cpu().numpy())
-    return embs_df
+    data = embs.cpu().numpy()
+    if emb_mode=='cell':
+        return pd.DataFrame(data)
+    else:
+        return data
 
 
 
@@ -99,7 +102,7 @@ def load_model(model_path, model_type='Pretrained', n_classes=0, mode='eval'):
     return model
 
 
-def load_data_as_dataframe(data_path: str, num_cells: int = 100, shuffle: bool = True) -> pd.DataFrame:
+def load_data_as_dataframe(data_path, num_cells=None, shuffle=False) -> pd.DataFrame:
     """Loads a dataset, optionally shuffles it, and returns a subset as a Pandas DataFrame.
 
     Args:
@@ -119,14 +122,14 @@ def load_data_as_dataframe(data_path: str, num_cells: int = 100, shuffle: bool =
     if shuffle:
         data = data.shuffle(seed=42)
 
-    if num_cells > len(data):
-        raise ValueError(f"Requested subset size ({num_cells}) exceeds dataset length ({len(data)})")
-
-    data_subset = data.select([i for i in range(num_cells)])
-    df = data_subset.to_pandas()
+    if num_cells is None:
+        return data.to_pandas()
+    elif num_cells > len(data):
+        raise ValueError(f"Requested subset size ({num_cells}) exceeds dataset length ({len(data)}). For all cells, use num_cells=`None.'")
+    else:
+        data_subset = data.select([i for i in range(num_cells)])
+        return data_subset.to_pandas()
     
-    return df
-
 
 def make_embedding_anndata(embedding_df, data):
     """A function to make an anndata object of embeddings"""
@@ -136,9 +139,6 @@ def make_embedding_anndata(embedding_df, data):
     return adata
     
     
-
-
-
 def embedding_to_adata(df: pd.DataFrame, n_dim: int = None) -> an.AnnData:
     """Converts a Pandas DataFrame with an embedding to an AnnData object.
 
