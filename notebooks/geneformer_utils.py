@@ -8,6 +8,7 @@ import anndata as an
 import scanpy as sc
 import umap
 import gc
+import pickle
 
 from datasets import Dataset, load_from_disk
 from datasets import load_dataset
@@ -15,28 +16,129 @@ from geneformer import EmbExtractor
 import geneformer
 
 
-def load_and_subset_data(data_path: str, num_cells: int = 100) -> pd.DataFrame:
-    """Loads a dataset from disk, selects a subset of cells, and converts it to a Pandas DataFrame.
+DEFAULT_NAME_PATH = "/nfs/turbo/umms-indikar/shared/projects/geneformer/geneformer/gene_name_id_dict.pkl"
+DEFAULT_TOKEN_PATH = "/nfs/turbo/umms-indikar/shared/projects/geneformer/token_dictionary.pkl"
+DEFAULT_MEDIAN_PATH = "/nfs/turbo/umms-indikar/shared/projects/geneformer/geneformer/gene_median_dictionary.pkl"
+
+
+def extract_embedding_in_mem(model, data, emb_mode='cell', layer_to_quant=-1, forward_batch_size=10):
+    """Extracts embeddings from a model and returns them as a DataFrame.
+
+    This function provides an in-memory extraction of embeddings, allowing for convenient
+    manipulation and analysis directly within your Python environment.
 
     Args:
-        data_path (str): Path to the dataset file.
-        num_cells (int, optional): Number of cells to include in the subset (default: 100).
+        model: The model to use for embedding extraction.
+        data: The input data for which embeddings need to be extracted.
+        emb_mode (str, optional): The embedding mode. Defaults to 'cell'.
+        layer_to_quant (int, optional): The layer to quantize. Defaults to -1 (last layer).
+        forward_batch_size (int, optional): The batch size for forward passes. Defaults to 10.
 
     Returns:
-        pd.DataFrame: The subset of data as a Pandas DataFrame.
+        pandas.DataFrame: A DataFrame containing the extracted embeddings.
+
+    Raises:
+        TypeError: If `model` is not a supported model type.
+        ValueError: If `data` is not in the correct format.
+    """
+
+    embs = geneformer.emb_extractor.get_embs(
+        model,
+        data,
+        emb_mode,
+        layer_to_quant,
+        0,  # Assuming this is a constant parameter for the function
+        forward_batch_size,
+        summary_stat=None,  
+        silent=False, 
+    )
+    data = embs.cpu().numpy()
+    if emb_mode=='cell':
+        return pd.DataFrame(data)
+    else:
+        return data
+
+
+
+def load_pickle(path):
+    """Loads a pickled object from the specified file path.
+
+    Args:
+        path (str): The file path to the pickled object.
+
+    Returns:
+        The unpickled object.
+
+    Raises:
+        FileNotFoundError: If the file does not exist.
+        pickle.UnpicklingError: If there's an error unpickling the object.
+    """
+    
+    with open(path, "rb") as f:
+        return pickle.load(f)
+
+    
+def load_model(model_path, model_type='Pretrained', n_classes=0, mode='eval'):
+    """
+    Loads a pre-trained or custom model for geneformer perturbations.
+
+    Args:
+        model_path (str): Path to the model file.
+        model_type (str, optional): Type of model ('Pretrained' or custom). Default: 'Pretrained'.
+        n_classes (int, optional): Number of output classes for custom models. Default: 0.
+        mode (str, optional): Mode to load the model in ('eval' or 'train'). Default: 'eval'.
+
+    Returns:
+        The loaded model object.
+    """
+
+    model = geneformer.perturber_utils.load_model(
+        model_type,
+        n_classes,
+        model_path,
+        mode
+    )
+
+    return model
+
+
+def load_data_as_dataframe(data_path, num_cells=None, shuffle=False) -> pd.DataFrame:
+    """Loads a dataset, optionally shuffles it, and returns a subset as a Pandas DataFrame.
+
+    Args:
+        data_path: Path to the dataset file.
+        num_cells: Number of cells to include in the subset (default: 100).
+        shuffle: Whether to shuffle the dataset before subsetting (default: True).
+
+    Raises:
+        ValueError: If the requested subset size exceeds the dataset length.
+
+    Returns:
+        The subset of data as a Pandas DataFrame.
     """
 
     data = load_from_disk(data_path)
-    if num_cells > len(data):
-        raise ValueError(f"Requested subset size ({num_cells}) exceeds dataset length ({len(data)})")
 
-    data_subset = data.select([i for i in range(num_cells)])
-    df = data_subset.to_pandas()
+    if shuffle:
+        data = data.shuffle(seed=42)
 
-    return df
+    if num_cells is None:
+        return data.to_pandas()
+    elif num_cells > len(data):
+        raise ValueError(f"Requested subset size ({num_cells}) exceeds dataset length ({len(data)}). For all cells, use num_cells=`None.'")
+    else:
+        data_subset = data.select([i for i in range(num_cells)])
+        return data_subset.to_pandas()
+    
 
+def make_embedding_anndata(embedding_df, data):
+    """A function to make an anndata object of embeddings"""
 
-
+    adata = an.AnnData(embedding_df.to_numpy())
+    adata.obs = data
+    return adata
+    
+    
 def embedding_to_adata(df: pd.DataFrame, n_dim: int = None) -> an.AnnData:
     """Converts a Pandas DataFrame with an embedding to an AnnData object.
 
