@@ -1,4 +1,5 @@
 output_path: "/scratch/indikar_root/indikar1/shared_data/geneformer/"
+model_path: "/nfs/turbo/umms-indikar/shared/projects/geneformer/geneformer-12L-30M/"
 ihsc_path: "/scratch/indikar_root/indikar1/cstansbu/HSC/scanpy/clustered.anndata.h5ad"
 ts_dir: "/nfs/turbo/umms-indikar/shared/projects/DGC/data/tabula_sapiens/extract/"
 name_path: "/nfs/turbo/umms-indikar/shared/projects/geneformer/geneformer/gene_name_id_dict.pkl"
