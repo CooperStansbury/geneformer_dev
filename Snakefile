@@ -24,6 +24,31 @@ TS_DATA = [
 ]
 
 
+WENG_DATA = [
+    "young2_HSC", 
+    "young1_all_t2", 
+    "old2_BMMC_HSPC",
+    "young2_all", 
+    "old1_BMMC_HSPC",
+    "young1_all_t1",
+]
+
+basenames = [
+    "iHSC",
+    "pellin",
+    "TS_Blood",
+    "TS_Bone_Marrow",
+    "TS_Fat",
+    "TS_Vasculature",
+    "weng_old1_BMMC_HSPC",
+    "weng_old2_BMMC_HSPC",
+    "weng_young1_all_t1",
+    "weng_young1_all_t2",
+    "weng_young2_all",
+    "weng_young2_HSC",
+]
+
+
 rule all:
     input:
         OUTPUT + "anndata/pellin.h5ad",
@@ -35,6 +60,9 @@ rule all:
         OUTPUT + "datasets/pellin.dataset",
         expand(OUTPUT + "anndata/{ts}.h5ad", ts=TS_DATA),
         expand(OUTPUT + "datasets/{ts}.dataset", ts=TS_DATA),
+        expand(OUTPUT + "anndata/weng_{pid}.h5ad", pid=WENG_DATA),
+        expand(OUTPUT + "datasets/weng_{pid}.dataset", pid=WENG_DATA),
+        expand(OUTPUT + "cell_embeddings/{data}.h5ad", data=basenames),
 
         
 rule get_tokens:
@@ -78,8 +106,10 @@ rule get_iHSC:
         config['ihsc_path']
     output:
         OUTPUT + "anndata/iHSC.h5ad"
+    conda:
+        "geneformer"
     shell:
-        """cp {input} {output}"""
+        """python scripts/get_ihsc_data.py {input} {output}"""
 
 
 rule build_iHSC:
@@ -93,6 +123,33 @@ rule build_iHSC:
         """python scripts/to_geneformer.py -i {input} -o {output} \
         --counts_column total_counts \
         --layer raw_counts \
+        --verbose"""
+    
+    
+rule get_weng_data:
+    input:
+        "/nfs/turbo/umms-indikar/shared/projects/HSC/data/weng_2024/scanpy_objects/{pid}.h5ad",
+    output:
+        OUTPUT + "anndata/weng_{pid}.h5ad"  
+    wildcard_constraints:
+        ts='|'.join([re.escape(x) for x in set(WENG_DATA)]),
+    shell:
+        """cp {input} {output}"""
+        
+        
+
+rule build_weng_data:
+    input:
+        OUTPUT + "anndata/weng_{pid}.h5ad",  
+    output:
+        directory(OUTPUT + "datasets/weng_{pid}.dataset")
+    conda:
+        "geneformer"
+    shell:
+        """python scripts/to_geneformer.py -i {input} -o {output} \
+        --counts_column nCount_RNA \
+        --layer raw_counts \
+        --map_gene_names \
         --verbose"""
         
         
@@ -148,3 +205,19 @@ rule build_tablula_data:
         """python scripts/to_geneformer.py -i {input} -o {output} \
         --counts_column n_counts_UMIs \
         --verbose """
+        
+        
+        
+rule extract_cell_embedding:
+    input:
+        data=OUTPUT + "datasets/{data}.dataset",
+        model=config['model_path']
+    output:
+        OUTPUT + "cell_embeddings/{data}.h5ad",
+    conda:
+        "geneformer"
+    shell:
+        """python scripts/extract_cell_embs.py \
+        {input.data} \
+        {input.model} \
+        {output}"""

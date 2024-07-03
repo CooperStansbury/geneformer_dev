@@ -204,7 +204,7 @@ def tokenize_anndata(adata, genelist_dict, gene_median_dict,
 
         # Update metadata
         for k in adata.obs.columns:
-            file_cell_metadata[k].extend(adata_chunk.obs[k].tolist())
+            file_cell_metadata[k].extend(adata_chunk.obs[k].astype(str).tolist())
 
     return tokenized_cells, file_cell_metadata
 

@@ -1,0 +1,66 @@
+label,standardized_cell_type,broad_type
+iHSC,iHSC,induced
+HSC,HSC,stem/progenitor
+Refined.HSC,HSC,stem/progenitor
+MPP,Multipotent Progenitor,stem/progenitor
+CMP,Common Myeloid Progenitor,stem/progenitor
+myeloid progenitor,Common Myeloid Progenitor,stem/progenitor
+MDP,Common Myeloid Progenitor,stem/progenitor
+GMP,Granulocyte-Macrophage Progenitor,stem/progenitor
+MLP,Multi-Lymphoid Progenitor,stem/progenitor
+LMPP,Multi-Lymphoid Progenitor,stem/progenitor
+MEP,Megakaryocyte-Erythroid Progenitor,stem/progenitor
+MKP,Megakaryocyte-Erythroid Progenitor,stem/progenitor
+erythroid progenitor,Megakaryocyte-Erythroid Progenitor,stem/progenitor
+EryP,Megakaryocyte-Erythroid Progenitor,stem/progenitor
+macrophage,Macrophage,myeloid
+Macrophages,Macrophage,myeloid
+monocyte,Monocyte,myeloid
+classical monocyte,Monocyte,myeloid
+non-classical monocyte,Monocyte,myeloid
+Mono,Monocyte,myeloid
+granulocyte,Granulocyte,myeloid
+neutrophil,Neutrophil,myeloid
+Neutrophil,Neutrophil,myeloid
+NAMPT neutrophil,Neutrophil,myeloid
+CD24 Neutrophil,Neutrophil,myeloid
+mast cell,Mast Cell,myeloid
+Mast_Cells,Mast Cell,myeloid
+erythrocyte,Erythrocyte,myeloid
+cDC,Dendritic Cell,myeloid
+pDC,Dendritic Cell,myeloid
+Cd141 positive myeloid dendritic cell,Dendritic Cell,myeloid
+b cell,B Cell,lymphoid
+memory b cell,B Cell,lymphoid
+naive b cell,B Cell,lymphoid
+B,B Cell,lymphoid
+ProB,B Cell,lymphoid
+t cell,T Cell,lymphoid
+T_Cells,T Cell,lymphoid
+CD4 t cell,T Cell,lymphoid
+CD8 t cell,T Cell,lymphoid
+CD4,T Cell,lymphoid
+CD8,T Cell,lymphoid
+alpha beta T cell,T Cell,lymphoid
+nk cell,NK Cell,lymphoid
+NK cell,NK Cell,lymphoid
+NK,NK Cell,lymphoid
+Natural_Killar_cells,NK Cell,lymphoid
+type I NK T cell,NK T Cell,lymphoid
+plasma cell,Plasma Cell,lymphoid
+Plasma_cells,Plasma Cell,lymphoid
+Plasma,Plasma Cell,lymphoid
+CLP,Common Lymphoid Progenitor,lymphoid
+fibroblast,Fibroblast,fibroblast
+Fibroblasts,Fibroblast,fibroblast
+Myofibroblasts,Fibroblast,fibroblast
+endothelial cell,Endothelial Cell,endothelial
+Endothelial_cells,Endothelial Cell,endothelial
+lymphatic endothelial cell,Endothelial Cell,endothelial
+artery endothelial cell,Endothelial Cell,endothelial
+smooth muscle cell,Smooth Muscle Cell,fibroblast
+Smooth_muscle_cells,Smooth Muscle Cell,fibroblast
+"cd4-positive, alpha-beta memory t cell",T Cell,lymphoid
+"cd8-positive, alpha-beta cytokine secreting effector t cell",T Cell,lymphoid
+"cd8-positive, alpha-beta t cell",T Cell,lymphoid
+"naive thymus-derived cd4-positive,alpha-beta t cell",T Cell,lymphoid
