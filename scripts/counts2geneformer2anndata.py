@@ -1,5 +1,5 @@
 """
-This script converts single cell counts matrix in to a gene former embedding Ann Data object.
+This script converts single cell counts matrix in to a gene former embedding embeddings or GF coordinates as an Ann Data object.
 
 Arguments (four arguments):
     1. output directory: chatstatus['output-directory']
@@ -15,12 +15,12 @@ python <path/to/script/>counts2geneformer2anndata.py <output path> <input file> 
                                                        Argument 1   Argument 2  Argument 3
 BRAD Line:
 ```
-subprocess.call([sys.executable, '<path/to/script/>/counts2geneformer2anndata.py', chatstatus['output-directory'], <output file>, <input file>, <Gramian summation bound>])
+subprocess.call([sys.executable, '<path/to/script/>/counts2geneformer2anndata.py', chatstatus['output-directory'], <input file>, <verbose>], capture_output=True, text=True)
 ```
 
 **OUTPUT FILE NAME INSTRUCTIONS**
 1. Output path should be chatstatus['output-directory']
-2. Output file name should be `S3-<descriptive name>.csv`
+2. Output file name should be `S1-<descriptive name>.csv`
 """
 import sys
 import os
@@ -34,7 +34,7 @@ import anndata as an
 from datasets import Dataset, load_from_disk
 import torch
 
-sys.path.append('/home/jpic/geneformer_dev/scripts')
+# sys.path.append('/home/jpic/geneformer_dev/scripts')
 import geneformer_utils as gtu
 
 
