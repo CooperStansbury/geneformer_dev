@@ -1,18 +1,10 @@
-import seaborn as sns
 import pandas as pd 
 import numpy as np
-from scipy.spatial.distance import squareform, pdist
-import matplotlib.pyplot as plt
-import torch
 import anndata as an
 import scanpy as sc
-import umap
-import gc
 import pickle
 
-from datasets import Dataset, load_from_disk
-from datasets import load_dataset
-from geneformer import EmbExtractor
+from datasets import Dataset, load_from_disk, load_dataset
 import geneformer
 
 
