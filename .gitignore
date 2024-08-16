@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
+notebooks/iHSC/your_dataset.csv
 
 # C extensions
 *.so
