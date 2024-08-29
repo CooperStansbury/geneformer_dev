@@ -1,3 +1,27 @@
+"""
+This script converts single cell counts matrix in to a gene former embedding embeddings or GF coordinates as an Ann Data object.
+
+Arguments (four arguments):
+    1. output directory: chatstatus['output-directory']
+    2. input file: <name of output file>
+    3. verbose: (bool, optional, default is true)
+
+Usage:
+Command Line:
+```
+python <path/to/script/>counts2geneformer2anndata.py <output path> <input file> <verbose>
+```
+                                                          |             |           |
+                                                       Argument 1   Argument 2  Argument 3
+BRAD Line:
+```
+subprocess.call([sys.executable, '<path/to/script/>/counts2geneformer2anndata.py', chatstatus['output-directory'], <input file>, <verbose>], capture_output=True, text=True)
+```
+
+**OUTPUT FILE NAME INSTRUCTIONS**
+1. Output path should be chatstatus['output-directory']
+2. Output file name should be `S1-<descriptive name>.csv`
+"""
 import sys
 import os
 import argparse
@@ -7,15 +31,190 @@ import pickle
 import scipy.sparse as sp
 import scanpy as sc
 import anndata as an
-from datasets import Dataset
+from datasets import Dataset, load_from_disk
+import torch
 
-DEFAULT_NAME_PATH = "/nfs/turbo/umms-indikar/shared/projects/geneformer/geneformer/gene_name_id_dict.pkl"
-DEFAULT_TOKEN_PATH = "/nfs/turbo/umms-indikar/shared/projects/geneformer/token_dictionary.pkl"
-DEFAULT_MEDIAN_PATH = "/nfs/turbo/umms-indikar/shared/projects/geneformer/geneformer/gene_median_dictionary.pkl"
-MODEL_INPUT_SIZE = 2048
-NUMBER_PROC = 16
+# sys.path.append('/home/jpic/geneformer_dev/scripts')
+import geneformer_utils as gtu
 
 
+def main():
+    """
+    Main function to process and embed gene expression data using Geneformer.
+
+    Parameters:
+    -----------
+    input_file : str, optional
+        Path to the input .h5ad file containing gene expression data.
+    output_directory : str, optional
+        Path to the directory where the output files will be saved.
+    verbose : bool, optional
+        If True, print detailed processing steps. Default is True.
+    """
+    # Auth: Joshua Pickard
+    #       jpic@umich.edu
+    # Date: July 3, 2024
+
+    output_directory = sys.argv[1]      # output file name
+    input_file       = sys.argv[2]      # chatstatus['output-directory']
+    if len(sys.argv) > 3:
+        verbose      = sys.argv[3]      # name of file where the model was previusly built
+        if verbose.lower() in ('true', '1', 'yes', 't', 'y'):
+            verbose = True
+        else:
+            verbose = False
+    else:
+            verbose = True
+    
+    input_path  = input_file
+    base_name   = os.path.splitext(os.path.basename(input_file))[0]
+    output_path = os.path.join(output_directory, base_name + '.dataset')
+    outpath     = os.path.join(output_directory, base_name + '_GF_embedding.h5ad')
+    
+    # Default values
+    MODEL_PATH          = "/nfs/turbo/umms-indikar/shared/projects/geneformer/geneformer-12L-30M/"
+    DEFAULT_NAME_PATH   = "/nfs/turbo/umms-indikar/shared/projects/geneformer/geneformer/gene_name_id_dict.pkl"
+    DEFAULT_TOKEN_PATH  = "/nfs/turbo/umms-indikar/shared/projects/geneformer/token_dictionary.pkl"
+    DEFAULT_MEDIAN_PATH = "/nfs/turbo/umms-indikar/shared/projects/geneformer/geneformer/gene_median_dictionary.pkl"
+    MODEL_INPUT_SIZE    = 2048
+    NUMBER_PROC         = 16
+    TARGET_SUM          = 10000
+    GENE_ID             = 'ensembl_id'
+    COUNTS_COLUMN       = 'n_counts'
+    LAYER               = 'X'
+    GENE_NAME_COLUMN    = 'gene_name'
+
+    # set values used for embedding
+    global model_size
+    token_path            = DEFAULT_TOKEN_PATH
+    median_path           = DEFAULT_MEDIAN_PATH
+    n_proc                = NUMBER_PROC
+    model_size            = MODEL_INPUT_SIZE
+    target_sum            = TARGET_SUM
+    gene_id               = GENE_ID
+    aggregate_transcripts = False
+    counts_column         = COUNTS_COLUMN
+    layer                 = LAYER
+    gene_names            = DEFAULT_NAME_PATH
+    gene_name_column      = GENE_NAME_COLUMN
+    map_names             = False
+    num_cells             = None # all cells, useful for testing 
+
+    torch.cuda.empty_cache()
+    
+    ###########################################
+    #
+    #   TOKENIZE COUNTS DATA FOR GENEFORMER
+    #
+    ###########################################
+    print("Loading gene tokenization data...") if verbose else None
+    gene_token_dict, gene_keys, genelist_dict = load_gene_tokenization(token_path)
+    print(f"Loaded {len(gene_token_dict)} gene tokens") if verbose else None
+    
+    print("Loading gene median expression data...") if verbose else None
+    gene_median_dict = load_gene_median_dict(median_path)
+    print(f"Loaded {len(gene_median_dict)} gene median expression values") if verbose else None
+    
+    if map_names:
+        print("Loading gene name mapping data...") if verbose else None
+        gene_names = load_gene_names(gene_names)
+        print(f"Loaded {len(gene_names)} gene name mappings") if verbose else None
+    
+    # Load and pre-process data
+    print(f"Loading AnnData from {input_path}...") if verbose else None
+    adata = sc.read_h5ad(input_path)
+    print(f"Loaded AnnData with shape {adata.shape}") if verbose else None
+    
+    if map_names:
+        print("Mapping gene names to Ensembl IDs...") if verbose else None
+        adata = map_gene_names(adata, gene_id, gene_name_column, gene_names)
+    
+    if not layer == 'X':
+        print(f"Using layer '{layer}' for expression data...") if verbose else None
+        adata.X = adata.layers[layer]
+        
+    print("Checking for and/or calculating total counts per cell...") if verbose else None
+    adata = check_counts_column(adata, counts_column)
+    
+    # Tokenize and rank genes
+    print("Tokenizing and ranking genes...") if verbose else None
+    tokenized_cells, cell_metadata = tokenize_anndata(
+        adata, genelist_dict, gene_median_dict,
+        target_sum=target_sum, gene_id=gene_id, counts_column=counts_column,
+        gene_token_dict=gene_token_dict
+    )
+    print(f"Processed {len(tokenized_cells)} cells") if verbose else None
+    
+    # Create Hugging Face dataset
+    print("Creating Hugging Face dataset...") if verbose else None
+    dataset_dict = {
+        "input_ids": tokenized_cells,
+        **cell_metadata
+    }
+    output_dataset = Dataset.from_dict(dataset_dict)
+    print(f"Dataset has {len(output_dataset)} examples") if verbose else None
+    
+    # Format cell features
+    print("Formatting cell features...") if verbose else None
+    dataset = output_dataset.map(format_cell_features, num_proc=n_proc)
+    
+    # Save dataset
+    print(f"Saving processed dataset to {output_path}...") if verbose else None
+    
+    save_hf_dataset(dataset, output_path, overwrite=True)
+    print("Processing completed successfully!") if verbose else None
+
+    ###########################################
+    #
+    #   EMBED TOKENS WITH GENEFORMER TO ANNDATA
+    #
+    ###########################################
+    dataset_path = output_path
+    
+    print(MODEL_PATH)
+    
+    print(f"Loading model from '{MODEL_PATH}'...") if verbose else None
+    model = gtu.load_model(MODEL_PATH)
+    print("Model loaded successfully!") if verbose else None
+    
+    print(f"Loading dataset from '{dataset_path}' (up to {num_cells} cells)...") if verbose else None
+    try:
+        df = gtu.load_data_as_dataframe(dataset_path, num_cells=num_cells)
+        data = Dataset.from_pandas(df)
+        df = df.drop(columns='input_ids')
+    except FileNotFoundError:
+        print(f"Error: Dataset file not found at '{dataset_path}'") if verbose else None
+        sys.exit(1)
+    except Exception as e:  # Catching other potential errors
+        print(f"Error loading dataset: {e}") if verbose else None
+        sys.exit(1)
+    print("Dataset loaded successfully!") if verbose else None
+    
+    print("Extracting embeddings...") if verbose else None
+    embs = gtu.extract_embedding_in_mem(model, data)
+    adata = gtu.embedding_to_adata(embs)
+    adata.obs = df.astype(str).reset_index().copy()
+    print("Embeddings extracted successfully!") if verbose else None
+    
+    print(f"Writing results to '{outpath}'...") if verbose else None
+    try:
+        adata.write(outpath)
+    except Exception as e:
+        print(f"Error writing output file: {e}") if verbose else None
+        sys.exit(1)
+    print("Output file written successfully!") if verbose else None
+    sys.exit(0)
+
+
+
+############################################
+#
+#   Helper Functions
+#
+############################################
+
+
+# from to_geneformer.py
 def check_counts_column(adata, counts_column):
     """Checks for and calculates a total counts column in AnnData.
 
@@ -151,7 +350,7 @@ def normalize_counts(adata_chunk,  counts_column='n_counts', target_sum=10000):
 
 def tokenize_anndata(adata, genelist_dict, gene_median_dict, 
                      chunk_size=100000, target_sum=10000, 
-                     counts_column='n_counts', gene_id="ensembl_id"):
+                     counts_column='n_counts', gene_id="ensembl_id", gene_token_dict=None):
     """
     Tokenizes and ranks genes within an AnnData object, optimizing for memory efficiency.
 
@@ -250,156 +449,9 @@ def save_hf_dataset(dataset: Dataset, output_path: str, overwrite=True):
         )
     dataset.save_to_disk(output_path)
 
-        
+
+
 if __name__ == "__main__":
-     # Argument Parsing
-    parser = argparse.ArgumentParser(description="Process single-cell RNA-seq data into a Hugging Face dataset format for gene expression modeling.")
+    main()
 
-    parser.add_argument("-i", "--input_path", required=True,
-                        help="Path to the input h5ad file containing single-cell RNA-seq data.")
-
-    parser.add_argument("-o", "--output_path", required=True,
-                        help="Path to save the processed Hugging Face dataset.")
-
-    parser.add_argument("-t", "--token_path", nargs='?',
-                        const=DEFAULT_TOKEN_PATH, type=str,
-                        default=DEFAULT_TOKEN_PATH,
-                        help="Path to the file containing the gene token dictionary (optional, defaults to %(default)s).")
-
-    parser.add_argument("-m", "--median_path", nargs='?',
-                        const=DEFAULT_MEDIAN_PATH, type=str,
-                        default=DEFAULT_MEDIAN_PATH,
-                        help="Path to the file containing the gene median expression dictionary (optional, defaults to %(default)s).")
-
-    parser.add_argument("--n_proc", nargs='?',
-                        const=NUMBER_PROC, type=int,
-                        default=NUMBER_PROC,
-                        help="Number of processes to use for parallel processing (optional, defaults to %(default)s).")
-
-    parser.add_argument("--model_size", nargs='?',
-                        const=MODEL_INPUT_SIZE, type=int,
-                        default=MODEL_INPUT_SIZE,
-                        help="Maximum number of top-ranked genes to include per cell (optional, defaults to %(default)s).")
-
-    parser.add_argument("--target_sum", nargs='?',
-                        const=10000, type=float,
-                        default=10000,
-                        help="Target sum for cell count normalization (optional, defaults to %(default)s).")
-
-    parser.add_argument("--gene_id", nargs='?',
-                        const='ensembl_id', type=str,
-                        default='ensembl_id',
-                        help="Column name in AnnData.var containing gene IDs (optional, defaults to %(default)s).")
-    
-    parser.add_argument('--aggregate_transcripts', action='store_true',
-                        help="Split gene IDs on '.' characters and sum counts for each gene ID (optional).")
-
-    parser.add_argument("--counts_column", nargs='?',
-                        const='n_counts', type=str,
-                        default='n_counts',
-                        help="Column name in AnnData.obs containing total counts per cell (optional, defaults to %(default)s).")
-  
-    parser.add_argument("--layer", nargs='?',
-                        const='X', type=str,
-                        default='X',
-                        help="Layer of the AnnData object to use for expression data (optional, defaults to %(default)s).")
-
-    parser.add_argument("--gene_names", nargs='?',
-                        const=DEFAULT_NAME_PATH, type=str,
-                        default=DEFAULT_NAME_PATH,
-                        help="Path to the file mapping gene names to IDs (optional, defaults to %(default)s).")
-  
-    parser.add_argument("--gene_name_column", nargs='?',
-                        const='gene_name', type=str,
-                        default='gene_name',
-                        help="Column name in AnnData.var with gene names to be mapped (optional, defaults to %(default)s).")
-
-    parser.add_argument('--map_gene_names', action='store_true',
-                        help="Enable mapping of gene names to Ensembl IDs (optional).")
-    
-    parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Increase output verbosity"
-    )
-    
-    # parse args
-    args = parser.parse_args()
-    
-    input_path = args.input_path
-    output_path = args.output_path
-    token_path = args.token_path
-    median_path = args.median_path
-    n_proc = args.n_proc
-    model_size = args.model_size
-    target_sum = args.target_sum
-    gene_id = args.gene_id
-    aggregate_transcripts = args.aggregate_transcripts
-    counts_column = args.counts_column
-    layer = args.layer
-    gene_names = args.gene_names
-    gene_name_column = args.gene_name_column
-    map_names = args.map_gene_names
-    
-    # Verbose Output Handling
-    if args.verbose:
-        def vprint(*args, **kwargs):  # Define a verbose print function
-            print(*args, file=sys.stderr, **kwargs)  # Print to stderr to distinguish from normal output
-    else:
-        def vprint(*args, **kwargs):
-            pass  # Do nothing if verbose mode is off
-    
-    # Load resources with informative prints
-    vprint("Loading gene tokenization data...")
-    gene_token_dict, gene_keys, genelist_dict = load_gene_tokenization(token_path)
-    vprint(f"Loaded {len(gene_token_dict)} gene tokens")
-
-    vprint("Loading gene median expression data...")
-    gene_median_dict = load_gene_median_dict(median_path)
-    vprint(f"Loaded {len(gene_median_dict)} gene median expression values")
-
-    if map_names:
-        vprint("Loading gene name mapping data...")
-        gene_names = load_gene_names(gene_names)
-        vprint(f"Loaded {len(gene_names)} gene name mappings")
-
-    # Load and pre-process data
-    vprint(f"Loading AnnData from {input_path}...")
-    adata = sc.read_h5ad(input_path)
-    vprint(f"Loaded AnnData with shape {adata.shape}")
-
-    if map_names:
-        vprint("Mapping gene names to Ensembl IDs...")
-        adata = map_gene_names(adata, gene_id, gene_name_column, gene_names)
-
-    if not layer == 'X':
-        vprint(f"Using layer '{layer}' for expression data...")
-        adata.X = adata.layers[layer]
-        
-    vprint("Checking for and/or calculating total counts per cell...")
-    adata = check_counts_column(adata, counts_column)
-
-    # Tokenize and rank genes
-    vprint("Tokenizing and ranking genes...")
-    tokenized_cells, cell_metadata = tokenize_anndata(
-        adata, genelist_dict, gene_median_dict,
-        target_sum=target_sum, gene_id=gene_id, counts_column=counts_column
-    )
-    vprint(f"Processed {len(tokenized_cells)} cells")
-
-    # Create Hugging Face dataset
-    vprint("Creating Hugging Face dataset...")
-    dataset_dict = {
-        "input_ids": tokenized_cells,
-        **cell_metadata
-    }
-    output_dataset = Dataset.from_dict(dataset_dict)
-    vprint(f"Dataset has {len(output_dataset)} examples")
-
-    # Format cell features
-    vprint("Formatting cell features...")
-    dataset = output_dataset.map(format_cell_features, num_proc=n_proc)
-
-    # Save dataset
-    vprint(f"Saving processed dataset to {output_path}...")
-    save_hf_dataset(dataset, output_path, overwrite=True)
-    vprint("Processing completed successfully!")
 
